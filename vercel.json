@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": null,
+  "outputDirectory": ".",
+  "redirects": [
+    { "source": "/jv-visual-studio-v4%20(1).html", "destination": "/", "permanent": false }
+  ]
+}
+
