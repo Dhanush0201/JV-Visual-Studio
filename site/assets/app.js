@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { createSceneLoader } from './scene-loader.js';
+import { createSceneLoader, startSceneAssets } from './scene-loader.js';
 
 const html = document.documentElement;
 const $ = (s, r = document) => r.querySelector(s);
@@ -143,10 +143,10 @@ soundBtn.addEventListener('click', () => {
     }, { once: true });
     v.src = url;
   }
-  function arm(v) { if (!v._armed) { v._armed = true; v.preload = 'auto'; setSrc(v, v.dataset.src); } }
-  const play = v => { if (reduceMotion) return; arm(v); v._wantPlay = true; v.play().catch(() => {}); };
+  function arm(v) { if (!v._armed) { v._armed = true; v.preload = 'metadata'; setSrc(v, v.dataset.src); } }
+  const play = v => { if (reduceMotion) return; arm(v); v.preload = 'auto'; v._wantPlay = true; v.play().catch(() => {}); };
   const stop = v => { v._wantPlay = false; if (!v.paused) v.pause(); };
-  const near = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) arm($('video', e.target)); }), { rootMargin: '600px 0px' });
+  const near = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting && !reduceMotion) arm($('video', e.target)); }), { rootMargin: '600px 0px' });
   const seen = new IntersectionObserver(es => es.forEach(e => {
     const v = $('video', e.target);
     if (e.intersectionRatio >= 0.55) play(v); else stop(v);
@@ -217,13 +217,19 @@ if (renderer) setupRenderer();
 
 /* ───────── real materials: Poly Haven PBR sets × baked light-only lightmaps ───────── */
 const LIB = window.JV_LIB;
-const texCache = {}, texClones = {};
+const texCache = {}, texClones = {}, textureTasks = {};
 const sfx = isMobile ? '-m' : '';
 function texture(url, srgb, repeat = 0, channel = 0, flip = true) {
   const key = url + '|' + srgb;
   if (!texCache[key]) {
     const clones = [];
-    const t = texLoader.load(url, () => clones.forEach(c => { c.needsUpdate = true; }));
+    let resolve, reject;
+    textureTasks[key] = new Promise((ok, bad) => { resolve = ok; reject = bad; });
+    textureTasks[key].catch(() => {}); // The owning scene awaits and reports failures.
+    const t = texLoader.load(url, () => {
+      clones.forEach(c => { c.needsUpdate = true; }); resolve();
+    }, undefined, error => { delete texCache[key]; reject(error); });
+    t.userData.jvTextureKey = key;
     t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.flipY = flip; t.anisotropy = isMobile ? 4 : 8;
     texClones[key] = clones;
@@ -236,6 +242,19 @@ function texture(url, srgb, repeat = 0, channel = 0, flip = true) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat); t.channel = channel;
   if (base.image && base.image.width) t.needsUpdate = true; else texClones[key].push(t);
   return t;
+}
+async function waitForTextures(root) {
+  const pending = new Set();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    for (const material of (Array.isArray(o.material) ? o.material : [o.material])) {
+      for (const value of Object.values(material)) {
+        const task = value?.isTexture && textureTasks[value.userData.jvTextureKey];
+        if (task) pending.add(task);
+      }
+    }
+  });
+  await Promise.all(pending);
 }
 // lightmap = irradiance only: drop three's own IBL diffuse (the sky is already in the bake) and
 // darken reflections where the bake is in shadow (cheap specular occlusion)
@@ -321,12 +340,15 @@ function loadGlb(url, onProgress) {
   return loader.loadAsync(url, onProgress);
 }
 const SMALL_PLANT = /^(peri|weed|shrub03|fern|nettle|calathea|jac_dist)/;
-async function addPlants(s, P) {
-  const hdr = await loadHdrTex(P.envd);
+async function loadPlantAssets(P) {
+  const [hdr, gltf] = await Promise.all([loadHdrTex(P.envd), loadGlb(P.glb + sfx + '.glb')]);
+  return { hdr, gltf };
+}
+async function addPlants(s, P, assets) {
+  const { hdr, gltf } = assets;
   hdr.mapping = THREE.EquirectangularReflectionMapping;
   s.plantEnvTarget = pmrem.fromEquirectangular(hdr);
   const envd = s.plantEnvTarget.texture; hdr.dispose();
-  const gltf = await loadGlb(P.glb + sfx + '.glb');
   const protos = {};
   gltf.scene.updateMatrixWorld(true);
   for (const node of gltf.scene.children) {
@@ -373,7 +395,6 @@ async function addPlants(s, P) {
     s.sun = L;
   }
   s.shadowDirty = true;
-  [1500, 4000, 9000].forEach(t => setTimeout(() => { s.shadowDirty = true; }, t));   // again once the leaf textures are in
 }
 const jvGroup = o => { let p = o; while (p && !(p.name && p.name.startsWith('JV_'))) p = p.parent; return p ? p.name.replace(/_\d+$/, '') : ''; };
 
@@ -394,18 +415,23 @@ async function prepareScene(s) {
   const cfg = s.cfg, P = cfg.pbr;
   if (!P) throw new Error('No baked materials configured for ' + s.key);
   s.scene.fog = new THREE.Fog(cfg.fog, cfg.fogNear, cfg.fogFar);
-  const hdr = await loadHdrTex(P.env);
-  try { s.envTarget = pmrem.fromEquirectangular(hdr); s.env = s.envTarget.texture; }
-  finally { hdr.dispose(); }
-  const sky = await texLoader.loadAsync(P.sky);
-  sky.mapping = THREE.EquirectangularReflectionMapping; sky.colorSpace = THREE.SRGBColorSpace;
-  s.scene.background = sky; s.scene.backgroundIntensity = P.kb * (cfg.skyGain || 1);
-  const gltf = await loadGlb(cfg.model, ev => { s.progress = ev.total ? ev.loaded / ev.total : 0; });
-  s.progress = 1;
+  s.phase = 'assets';
   const atl = {};
   for (const [name, a] of Object.entries(P.atlases)) {
     atl[name] = { k: a.k, lm: texture(a.lm + sfx + '.webp', true, 0, 1, false), al: texture(a.al + sfx + '.webp', true, 0, 1, false) };
   }
+  const assets = startSceneAssets({
+    environment: () => loadHdrTex(P.env),
+    sky: () => texLoader.loadAsync(P.sky),
+    model: () => loadGlb(cfg.model, ev => { s.progress = ev.total ? ev.loaded / ev.total : 0; }),
+    plants: P.plants ? () => loadPlantAssets(P.plants) : null
+  });
+  const [hdr, sky, gltf] = await assets.base;
+  try { s.envTarget = pmrem.fromEquirectangular(hdr); s.env = s.envTarget.texture; }
+  finally { hdr.dispose(); }
+  sky.mapping = THREE.EquirectangularReflectionMapping; sky.colorSpace = THREE.SRGBColorSpace;
+  s.scene.background = sky; s.scene.backgroundIntensity = P.kb * (cfg.skyGain || 1);
+  s.progress = 1;
   const sunLevel = P.sunLevel || 3.0, root = gltf.scene;
   root.traverse(o => {
     if (!o.isMesh) return;
@@ -434,16 +460,27 @@ async function prepareScene(s) {
   });
   s.scene.add(root);
   root.traverse(o => { if (o.isMesh && !/glass|water|lamp/i.test(jvGroup(o))) o.castShadow = true; });
+  s.phase = 'textures';
+  await waitForTextures(root);
   if (P.plants) {
-    try { await addPlants(s, P.plants); }
-    catch (e) { console.warn('plants failed', e); }
+    s.phase = 'plants';
+    const plants = await assets.plants;
+    try {
+      if (plants.error) throw plants.error;
+      await addPlants(s, P.plants, plants.value);
+      await waitForTextures(s.scene);
+    } catch (e) { console.warn('plants failed', e); }
   }
   if (cfg.build) setupBuild(s);
+  s.phase = 'shaders';
+  // Compile while the poster is visible, instead of blocking the first live frame.
+  await renderer.compileAsync(s.scene, camera);
 }
 ({ scenes, loadScene } = createSceneLoader({
   create: key => ({ key, cfg: CFG[key], scene: new THREE.Scene(), ready: false, failed: false, groups: {}, water: [], progress: 0 }),
   prepare: prepareScene,
   dispose: disposeScene,
+  onReady: s => { if (s.key === 'resort' || active?.key === s.key) warmNextScene(s.key); },
   onError: (s, err) => console.warn('scene failed', s.key, err)
 }));
 
@@ -504,6 +541,8 @@ function setupBuild(s) {
   s.lastStage = -1;
 }
 function updateBuild(s, p) {
+  if (s.buildProgress === p) return s.lastStage;
+  s.buildProgress = p;
   let cur = -1;
   s.build.forEach((st, i) => {
     const k = clamp((p - st.a) / (st.b - st.a));
@@ -522,7 +561,31 @@ function updateBuild(s, p) {
 }
 
 /* ───────── scroll → active chapter ───────── */
-const tracks = $$('.track').map(el => ({ el, key: el.dataset.track, steps: $$('.step', el) }));
+const tracks = $$('.track').map(el => ({ el, key: el.dataset.track, steps: $$('.step', el), title: $('.hud-title', el.closest('.chapter')).innerHTML }));
+const fades = $$('.fade');
+const scenePosters = { resort: 'img/resort_edge', villa: 'img/villa_front_dusk', home: 'img/home_street' };
+const posterImages = Object.fromEntries(Object.entries(scenePosters).map(([key, src]) => {
+  const image = new Image(); image.src = src + (isMobile ? '-s' : '') + '.webp'; return [key, image];
+}));
+let posterKey = null;
+function showPoster(key) {
+  if (key === posterKey) return;
+  posterKey = key;
+  stageEl.style.backgroundImage = key ? `url("${posterImages[key].src}")` : '';
+}
+const deferredPreloads = new Set();
+function warmNextScene(key) {
+  const next = tracks[tracks.findIndex(t => t.key === key) + 1]?.key;
+  if (!next || scenes[next] || deferredPreloads.has(next) || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || '')) return;
+  deferredPreloads.add(next);
+  const run = () => { if (!scenes[next]) loadScene(next); };
+  if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2500 });
+  else setTimeout(run, 250);
+}
+const htmlValues = new WeakMap();
+function updateHTML(element, value) {
+  if (htmlValues.get(element) !== value) { element.innerHTML = value; htmlValues.set(element, value); }
+}
 const hud = $('#hud'), hudChapter = $('#hudChapter'), hudStage = $('#hudStage'), hudBar = $('#hudBar i'), hudCam = $('#hudCam'), hudLoad = $('#hudLoad');
 const tools = $('#tools'), orbitBtn = $('#orbitBtn'), progressEl = $('.progress');
 const retryBtn = document.createElement('button');
@@ -586,6 +649,11 @@ function stepIndex(t) {
   return idx;
 }
 
+let layoutDirty = true, cachedTrack = null;
+const invalidateLayout = () => { layoutDirty = true; };
+addEventListener('scroll', invalidateLayout, { passive: true });
+addEventListener('resize', invalidateLayout);
+new ResizeObserver(invalidateLayout).observe(document.body);
 let lastT = performance.now();
 function frame(now) {
   try { frameInner(now); } catch (e) { console.error(e); }
@@ -593,29 +661,39 @@ function frame(now) {
 }
 function frameInner(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
-  const doc = document.documentElement;
-  progressEl.style.width = (100 * scrollY / Math.max(1, doc.scrollHeight - innerHeight)).toFixed(2) + '%';
-  // fade sections
-  $$('.fade').forEach(f => {
-    const r = f.getBoundingClientRect(); const t = clamp(-r.top / Math.max(1, r.height - innerHeight));
-    f.style.setProperty('--t', smooth(clamp((t - 0.15) / 0.7)).toFixed(3));
-    const c = $('.clock', f); if (c) { const e = 38 + (-2 - 38) * smooth(clamp((t - 0.15) / 0.7)); c.textContent = `SUN ${e.toFixed(0)}°`; }
-  });
-  const best = trackState();
+  if (layoutDirty) {
+    layoutDirty = false;
+    const doc = document.documentElement;
+    progressEl.style.width = (100 * scrollY / Math.max(1, doc.scrollHeight - innerHeight)).toFixed(2) + '%';
+    // fade sections
+    fades.forEach(f => {
+      const r = f.getBoundingClientRect(); const t = clamp(-r.top / Math.max(1, r.height - innerHeight));
+      f.style.setProperty('--t', smooth(clamp((t - 0.15) / 0.7)).toFixed(3));
+      const c = $('.clock', f); if (c) { const e = 38 + (-2 - 38) * smooth(clamp((t - 0.15) / 0.7)); c.textContent = `SUN ${e.toFixed(0)}°`; }
+    });
+    cachedTrack = trackState();
+    tracks.forEach(t => { t.step = stepIndex(t); });
+    const weights = {}; tracks.forEach(t => { weights[t.key] = Math.max(weights[t.key] || 0, t.visible ? t.cover : 0); });
+    sound.mix(weights);
+  }
+  const best = cachedTrack;
   // leave orbit mode as soon as the page moves on, so the stage never blocks the page
   if (orbit && (!best || best.key !== orbit.scene || Math.abs(scrollY - orbit.sy) > 80)) orbitBtn.click();
-  const w = {}; tracks.forEach(t => { w[t.key] = Math.max(w[t.key] || 0, t.visible ? t.cover : 0); });
-  sound.mix(w); sound.tick(dt);
+  sound.tick(dt);
   if (best && renderer) {
     if (!scenes[best.key]) loadScene(best.key);
     const s = scenes[best.key];
-    if (best.key !== lastActiveKey) { lastActiveKey = best.key; sound.whoosh(); if (orbit && orbit.scene !== best.key) orbitBtn.click(); }
+    if (best.key !== lastActiveKey) {
+      lastActiveKey = best.key; sound.whoosh();
+      if (orbit && orbit.scene !== best.key) orbitBtn.click();
+      if (s.ready) warmNextScene(best.key);
+    }
     active = s || null;
     const showHud = best.cover > 0.55;
     hud.classList.toggle('on', showHud); tools.classList.toggle('on', showHud && !!(s && s.ready));
-    const sIdx = stepIndex(best);
+    const sIdx = best.step || 0;
     const step = best.steps[sIdx];
-    hudChapter.innerHTML = $('.hud-title', best.el.closest('.chapter')).innerHTML;
+    updateHTML(hudChapter, best.title);
     if (s && s.ready) {
       renderer.domElement.hidden = false;
       hudLoad.textContent = ''; delete hudLoad.dataset.message; hudLoad.hidden = true; retryBtn.hidden = true;
@@ -636,7 +714,7 @@ function frameInner(now) {
       let label = lab ? lab.innerHTML : (best.lastLabel || '');
       best.lastLabel = label;
       if (s.build) { const cur = updateBuild(s, best.p); if (cur >= 0) label = s.cfg.build.stages[cur].label; else label = s.cfg.build.planLabel; }
-      hudStage.innerHTML = label;
+      updateHTML(hudStage, label);
       hudBar.style.width = (best.p * 100).toFixed(1) + '%';
       hudCam.textContent = `CAM ${(24 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2))).toFixed(0)} mm · EYE ${(cam.pos.y - s.cfg.ground).toFixed(1)} m · ${s.cfg.sunLabel}`;
       s.water.forEach(m => { m.normalMap.offset.x += dt * 0.012; m.normalMap.offset.y += dt * 0.007; });
@@ -644,11 +722,18 @@ function frameInner(now) {
       if (s.shadowDirty || s !== lastShadowScene) { renderer.shadowMap.needsUpdate = true; s.shadowDirty = false; lastShadowScene = s; }
       renderer.render(s.scene, camera);
     } else {
-      renderer.clear(); renderer.domElement.hidden = true;
-      hudStage.textContent = ''; hudCam.textContent = ''; hudBar.style.width = '0%';
+      if (!renderer.domElement.hidden) { renderer.clear(); renderer.domElement.hidden = true; }
+      showPoster(best.key);
+      updateHTML(hudStage, ''); hudCam.textContent = ''; hudBar.style.width = '0%';
       retryBtn.hidden = !s?.failed;
       hudLoad.hidden = false;
-      const message = s?.failed ? ['3D UNAVAILABLE — SEE RENDERS BELOW', '3D ಲಭ್ಯವಿಲ್ಲ — ಕೆಳಗಿನ ಚಿತ್ರಗಳನ್ನು ನೋಡಿ'] : [`LOADING ${Math.round((s?.progress || 0) * 100)}%`, `ಲೋಡ್ ಆಗುತ್ತಿದೆ ${Math.round((s?.progress || 0) * 100)}%`];
+      const labels = {
+        assets: s?.progress > 0 ? [`LOADING MODEL ${Math.round(s.progress * 100)}%`, `ಮಾದರಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ ${Math.round(s.progress * 100)}%`] : ['LOADING 3D', '3D ಲೋಡ್ ಆಗುತ್ತಿದೆ'],
+        textures: ['LOADING MATERIALS', 'ಸಾಮಗ್ರಿಗಳು ಲೋಡ್ ಆಗುತ್ತಿವೆ'],
+        plants: ['ADDING LANDSCAPE', 'ಭೂದೃಶ್ಯ ಲೋಡ್ ಆಗುತ್ತಿದೆ'],
+        shaders: ['PREPARING 3D', '3D ಸಿದ್ಧವಾಗುತ್ತಿದೆ']
+      };
+      const message = s?.failed ? ['3D UNAVAILABLE — RETRY OR KEEP SCROLLING', '3D ಲಭ್ಯವಿಲ್ಲ — ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ ಅಥವಾ ಮುಂದೆ ನೋಡಿ'] : (labels[s?.phase] || labels.assets);
       if (hudLoad.dataset.message !== message.join('|')) {
         hudLoad.replaceChildren(...message.map((text, i) => { const span = document.createElement('span'); span.lang = i ? 'kn' : 'en'; span.textContent = text; return span; }));
         hudLoad.dataset.message = message.join('|');
@@ -656,14 +741,16 @@ function frameInner(now) {
     }
   } else {
     hud.classList.remove('on'); tools.classList.remove('on'); retryBtn.hidden = true;
-    if (renderer) { renderer.clear(); renderer.domElement.hidden = true; }
+    showPoster(null);
+    if (renderer && !renderer.domElement.hidden) { renderer.clear(); renderer.domElement.hidden = true; }
   }
 }
 addEventListener('resize', () => { if (renderer) { renderer.setSize(innerWidth, innerHeight); } });
 if (renderer) {
-  // warm up the first chapter while the visitor reads the hero
-  loadScene('resort');
-  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) loadScene(e.target.dataset.track); }), { rootMargin: '150% 0px' });
-  tracks.forEach(t => io.observe(t.el));
+  // Direct chapter links should not download the resort before the requested scene.
+  const initial = tracks.find(t => '#' + t.el.closest('.chapter').id === location.hash)?.key || 'resort';
+  loadScene(initial);
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) loadScene($('.track', e.target).dataset.track); }), { rootMargin: '200% 0px' });
+  tracks.forEach(t => io.observe(t.el.closest('.chapter')));
 }
 requestAnimationFrame(frame);
