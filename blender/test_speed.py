@@ -20,7 +20,7 @@ bpy.ops.mesh.primitive_plane_add(size=40)
 bpy.ops.mesh.primitive_cube_add(size=4,location=(0,0,2))
 bpy.ops.object.light_add(type='SUN'); bpy.context.object.data.energy=3
 cam=bpy.data.objects.new('C',bpy.data.cameras.new('C')); sc.collection.objects.link(cam); sc.camera=cam
-cam.location=(10,-10,5); 
+cam.location=(10,-10,5);
 import mathutils
 d=mathutils.Vector((0,0,1.5))-cam.location; cam.rotation_euler=d.to_track_quat('-Z','Y').to_euler()
 sc.render.filepath='/home/claude/jv5/out/test.png'
