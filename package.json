@@ -3,7 +3,7 @@
   "version": "5.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": { "node": "24.x" },
   "scripts": {
     "build": "node tools/prepare-site.mjs",
     "dev": "node tools/prepare-site.mjs && python -m http.server 5173 --bind 127.0.0.1 --directory dist",
