@@ -1,0 +1,38 @@
+{
+ "hero": [
+  -24,
+  -15,
+  40,
+  15
+ ],
+ "vtx_spp": 24,
+ "atlases": {
+  "hero": [
+   2048,
+   32
+  ],
+  "build": [
+   2048,
+   24
+  ],
+  "int": [
+   1024,
+   64
+  ],
+  "terrain": [
+   2048,
+   24
+  ]
+ },
+ "hdri": {
+  "file": "/home/claude/jv5/pbr/hdri/qwantani_sunset_puresky_4k.hdr",
+  "file_1k": "/home/claude/jv5/pbr/hdri/qwantani_sunset_puresky_1k.hdr",
+  "sun_az": 248,
+  "target_sun": 4.0,
+  "sun_angle": 0.8,
+  "clamp_x": 8
+ },
+ "thin": {
+  "veg": 70000
+ }
+}

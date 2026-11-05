@@ -1,0 +1,12 @@
+{
+  "name": "jv-visual-studio",
+  "version": "5.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node tools/prepare-site.mjs",
+    "dev": "node tools/prepare-site.mjs && python -m http.server 5173 --bind 127.0.0.1 --directory dist",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

@@ -1,0 +1,27 @@
+{
+ "vtx_spp": 24,
+ "atlases": {
+  "build": [
+   2048,
+   32
+  ],
+  "int": [
+   2048,
+   64
+  ],
+  "terrain": [
+   1024,
+   24
+  ]
+ },
+ "hdri": {
+  "file": "/home/claude/jv5/pbr/hdri/qwantani_dusk_2_puresky_4k.hdr",
+  "file_1k": "/home/claude/jv5/pbr/hdri/qwantani_dusk_2_puresky_1k.hdr",
+  "sun_az": 255,
+  "sun": false,
+  "target_sky": 0.06
+ },
+ "thin": {
+  "veg": 45000
+ }
+}

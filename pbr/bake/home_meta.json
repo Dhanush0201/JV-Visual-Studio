@@ -1,0 +1,113 @@
+{
+ "atlases": {
+  "build": {
+   "k": 1.385121742884318,
+   "size": 2048
+  },
+  "terrain": {
+   "k": 1.2663208113776312,
+   "size": 2048
+  },
+  "int": {
+   "k": 2.279622819688585,
+   "size": 2048
+  }
+ },
+ "hdri": {
+  "rot_deg": 167.0,
+  "sun_dir": [
+   0.8164708614349365,
+   -0.3295518755912781,
+   0.4741002023220062
+  ],
+  "E_sun": 4.2,
+  "clamp": 14.436249732971191,
+  "sun_col": [
+   1.0,
+   0.9768715812383107,
+   0.8932293236149451
+  ],
+  "sun_dir_gltf": [
+   0.8164708614349365,
+   0.4741002023220062,
+   0.3295518755912781
+  ]
+ },
+ "kv": 0.6698893308639526,
+ "groups": {
+  "b01": {
+   "polys": 168,
+   "atlas": "build"
+  },
+  "b02": {
+   "polys": 3516,
+   "atlas": "build"
+  },
+  "b03": {
+   "polys": 1284,
+   "atlas": "build"
+  },
+  "b04": {
+   "polys": 5382,
+   "atlas": "build"
+  },
+  "b05": {
+   "polys": 1122,
+   "atlas": "build"
+  },
+  "b06": {
+   "polys": 890,
+   "atlas": "build"
+  },
+  "b07": {
+   "polys": 1332,
+   "atlas": "build"
+  },
+  "b08": {
+   "polys": 1834,
+   "atlas": "build"
+  },
+  "b08_glass": {
+   "polys": 114,
+   "atlas": null
+  },
+  "b09": {
+   "polys": 348,
+   "atlas": "build"
+  },
+  "b10": {
+   "polys": 516,
+   "atlas": "build"
+  },
+  "b10_glass": {
+   "polys": 54,
+   "atlas": null
+  },
+  "far_city": {
+   "polys": 3132,
+   "atlas": null
+  },
+  "ctx": {
+   "polys": 768,
+   "atlas": "terrain"
+  },
+  "ctx_glass": {
+   "polys": 324,
+   "atlas": null
+  },
+  "far": {
+   "polys": 4800,
+   "atlas": null
+  },
+  "b11": {
+   "polys": 24540,
+   "atlas": "int"
+  },
+  "b11_lamp": {
+   "polys": 784,
+   "atlas": null
+  }
+ },
+ "kb": 0.5263477213242475,
+ "plants": 151
+}

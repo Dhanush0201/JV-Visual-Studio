@@ -1,0 +1,77 @@
+{
+ "atlases": {
+  "build": {
+   "k": 3.167648845248752,
+   "size": 2048
+  },
+  "terrain": {
+   "k": 0.06668914937310748,
+   "size": 1024
+  },
+  "int": {
+   "k": 3.683126237657335,
+   "size": 2048
+  }
+ },
+ "hdri": {
+  "rot_deg": 312.5,
+  "sun_dir": [
+   -0.9444500207901001,
+   -0.25271961092948914,
+   0.2101118415594101
+  ],
+  "E_sun": 0,
+  "clamp": 31.51860809326172,
+  "sun_col": [
+   1,
+   1,
+   1
+  ],
+  "sun_dir_gltf": [
+   -0.9444500207901001,
+   0.2101118415594101,
+   0.25271961092948914
+  ]
+ },
+ "kv": 0.02123395726084709,
+ "groups": {
+  "build": {
+   "polys": 6486,
+   "atlas": "build"
+  },
+  "lamp": {
+   "polys": 138,
+   "atlas": null
+  },
+  "far": {
+   "polys": 4800,
+   "atlas": null
+  },
+  "glass": {
+   "polys": 24,
+   "atlas": null
+  },
+  "terrain": {
+   "polys": 12106,
+   "atlas": "terrain"
+  },
+  "int": {
+   "polys": 37412,
+   "atlas": "int"
+  },
+  "int_lamp": {
+   "polys": 206,
+   "atlas": null
+  },
+  "water": {
+   "polys": 1,
+   "atlas": null
+  },
+  "veg": {
+   "polys": 7776,
+   "atlas": null
+  }
+ },
+ "kb": 0.2230729250346913,
+ "plants": 207
+}
