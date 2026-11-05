@@ -1,0 +1,29 @@
+{
+ "home": true,
+ "vtx_spp": 24,
+ "atlases": {
+  "build": [
+   2048,
+   32
+  ],
+  "int": [
+   2048,
+   64
+  ],
+  "terrain": [
+   2048,
+   24
+  ]
+ },
+ "hdri": {
+  "file": "/home/claude/jv5/pbr/hdri/rustig_koppie_puresky_4k.hdr",
+  "file_1k": "/home/claude/jv5/pbr/hdri/rustig_koppie_puresky_1k.hdr",
+  "sun_az": 112,
+  "target_sun": 4.2,
+  "sun_angle": 0.8,
+  "clamp_x": 8
+ },
+ "thin": {
+  "ctx_veg": 30000
+ }
+}
